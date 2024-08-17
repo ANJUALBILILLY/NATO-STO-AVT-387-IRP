@@ -1,0 +1,138 @@
+;------------------------------------------------------------------------------------------|
+;This Journal file was written by Anju Albi Lilly, MSc.CFD, Cranfield University           |
+;as a part of IRP-2024                                                                     |
+;for NATO-CRWT-VT Digital twin for wind tunnel                                             |
+;adjust the Variables according to the required ref mach number                            |
+;                                                                                          |
+;------------------------------------------------------------------------------------------|
+;| "M_ref" | "Pref(Pa)" | "rho_ref(kg/m^3)" | "u_ref(m/s)" | "Viscosity(kg/ms)" | "P_dyn" ||
+;-----------------------------------------------------------------------------------------||
+;| 0.082   |  94009     | 1.1036            | 28.3         | 1.830824e-05       | 442     ||
+;| 0.136   |  93147     | 1.0917            | 47.0         | 1.833198e-05       | 1206    ||
+;| 0.193   |  91832     | 1.0731            | 66.8         | 1.837370e-05       | 2394    ||
+;------------------------------------------------------------------------------------------|
+;------------------------------------------------------------------------------------------|
+
+
+;read the generated mesh
+
+/file/read-case Level_7_fluent.cas q
+
+;Scale Mesh(was created in inches)
+
+/mesh/scale/0.0254 0.0254 0.0254
+
+;Set solver
+
+/define/models/solver/pressure-based yes q
+
+; Turbulence model setup
+
+/define/models/viscous/spalart-allmaras yes
+/define/models/viscous/corner-flow-correction yes q
+
+;Set material properties
+
+/define/material/change-create/air air yes constant 1.0917 no no yes constant 1.833198e-05 no no no q 
+
+;Set Boundary conditions
+
+/define/boundary-conditions/zone-type inlet velocity
+/define/boundary-conditions/velocity-inlet inlet no no yes yes no 5.1382 no 100 no no no yes 0 5.4656
+/define/boundary-conditions/set/pressure-outlet outlet () prevent-reverse-flow? yes q
+
+;set solution methods :note: the following indices are used in Fluent
+;p-v-coupling:20 = SIMPLE, 21 = SIMPLEC, 22 = PISO, 24 = Coupled
+;pressure:12=standard 10= standard 14= PRESTO! 11= Linear 13= Body weighted force
+;mom: 0= First order upwind 1= second order upwind
+;nut: 0= First order upwind 1= second order upwind
+;pseudo-time-method: 0 = Off  1 = Global Time Step
+
+/solve/set/ p-v-coupling 24
+/solve/set/discretization-scheme/pressure 10
+/solve/set/discretization-scheme/mom 1
+/solve/set/discretization-scheme/nut 1
+/solve/set/pseudo-time-method/formulation 0 q q 
+
+;Create reference locations(Pitot-static probe placed at x=3.502 m, y=-0.608 m, z=0 m)
+
+/surface/point-surface/ref_Point 3.502 -0.608 0 q
+/surface/point-surface/cp1_1 0.1 -0.457 0.9175 q
+/surface/point-surface/cp1_2 0.1 0 0.9175 q
+/surface/point-surface/cp1_3 0.1 0.457 0.9175 q
+/surface/point-surface/cp1_4 0.1 -0.457 -0.9175 q
+/surface/point-surface/cp1_5 0.1 0 -0.9175 q
+/surface/point-surface/cp1_6 0.1 0.457 -0.9175 q
+/surface/point-surface/cp2_1 5.33 -0.457 0.9175 q
+/surface/point-surface/cp2_2 5.33 0 0.9175 q
+/surface/point-surface/cp2_3 5.33 0.457 0.9175 q
+/surface/point-surface/cp2_4 5.33 -0.457 -0.9175 q
+/surface/point-surface/cp2_5 5.33  0 -0.9175 q
+/surface/point-surface/cp2_6 5.33 0.457 -0.9175 q
+/surface/point-surface/cpg_1 1.468 -0.608 0 q
+/surface/point-surface/cpg_2 5.131 -0.608 0 q
+/surface/plane-surface/xy_plane xy-plane 0 q
+/surface/rake-surface/line-ceiling 3.502 0.9175 0 3.502 0.412 0 1000 q
+/surface/rake-surface/line-floor 3.502 -0.9175 0 3.502 -0.412 0 1000 q
+/surface/rake-surface/line-port 3.502 0 0.9175 3.502 0 0.412 1000 q
+/surface/rake-surface/line-starboard 3.502 0 -0.9175 3.502 0 -0.412 1000 q
+/surface/rake-surface/line-density -9.419 0 0 7.3 0 0 1000 q
+/surface/rake-surface/line-cp -9.419 0 2.73 15 0 0.9175 1000 q
+/surface/rake-surface/line-bl_Profile_2 1.431 0 0.9175 1.431 0 0.412 1000 q
+/surface/rake-surface/line-bl_Profile_1 3.26 0 0.9175 3.26 0 0.412 1000 q
+
+ ;set report definitions
+
+/solve/report-definitions/add mass-imbalance surface-massflowrate surface-names inlet outlet() q
+
+/solve/report-definitions/add p-dyn-ref surface-areaavg field dynamic-pressure surface-names ref_point () q
+/solve/report-definitions/add p-stat-ref surface-areaavg field pressure surface-names ref_point () q
+
+;set convergence criteria
+
+/solve/monitors/residual/monitor? yes yes yes yes yes  convergence-criteria 1e-09 1e-09 1e-09 1e-09 1e-09 q q q 
+
+;Report plots
+/solve/report-plots/add/imbalance report-defs/mass-imbalance () print? yes plot-instantaneous-values? yes q q q
+/solve/report-plots/add/p_stat report-defs/p-stat-ref () print? yes plot-instantaneous-values? yes q q q
+/solve/report-plots/add/p_dyn report-defs/p-dyn-ref () print? yes plot-instantaneous-values? yes q q q
+
+;Set Custom field-functions for normalized values
+
+/define/custom-field-functions/define "custom-BL-1"  "(x_velocity)/47" q q
+/define/custom-field-functions/define "custom-density-1" "density/1.0917" q q
+/define/custom-field-functions/define "custom-1DCp-1" "(pressure-93147)/1206" q q 
+
+;run simulation
+solve/initialize/initialize-flow
+solve/iterate 500
+
+;Changing the viscous model to RSM
+/define/models/viscous/reynolds-stress-model yes
+/define/models/viscous/near-wall-treatment/enhanced-wall-treatment? yes q q
+
+
+solve/iterate 10000
+
+;Report
+/report/surface-integrals/area-weighted-avg ref_Point () velocity-magnitude yes velocity-magnitude q q
+/report/surface-integrals/area-weighted-avg ref_Point () dynamic-pressure yes dynamic-pressure q q
+/report/surface-integrals/area-weighted-avg ref_Point () mass-imbalance yes mass-imbalance q q
+
+;export data
+/file/export/ascii Template-1D-BoundaryLayer_profile_1 line-bl_profile_1 () yes custom-bl-1 () yes
+/file/export/ascii Template-1D-BoundaryLayer_profile_1_empty line-bl_profile_1 () yes custom-bl-1 () yes
+/file/export/ascii Template-1D-BoundaryLayer_profile_2 line-bl_profile_2 () yes custom-bl-1 () yes
+/file/export/ascii Template-1D-BoundaryLayer_profile_2_empty line-bl_profile_2 () yes custom-bl-1 () yes
+/file/export/ascii Template-1D-Density line-density () yes custom-density-1 () yes
+/file/export/ascii Template-1D-PressureCoeff line-cp () yes custom-1dcp-1 () yes
+/file/export/ascii Template-Scalar-MassFlow inlet outlet () yes mass-imbalance () yes 
+/file/export/ascii Template-scalar-Pdrop cp1_1 cp1_2 cp1_3 cp1_4 cp1_5 cp1_6 cp2_1 cp2_2 cp2_3 cp2_4 cp2_5 cp2_6 () yes pressure-coefficient () yes
+/file/export/ascii Template-scalar-Pgrad cpg_1 cpg_2 () yes pressure-coefficient () yes 
+
+;after finishing the simulation, write out data file
+
+/file/write-case RSM_Mesh7_Re28enhanced_2ndorder.cas.h5
+/file/write-data RSM_Mesh7_Re28enhanced_2ndorder.dat
+
+/exit ok
